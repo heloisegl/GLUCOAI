@@ -29,6 +29,11 @@ from torch import nn
 
 
 class MLPRegressor(nn.Module):
+    """O alvo (glicose em mg/dL, escala ~100) é padronizado internamente (`y_mean`/`y_std`, fixados em
+    train_model a partir do treino): sem isso, o MSE inicial é dominado pela escala bruta do alvo e a
+    rede não sai do chute "prever a média". `forward()` já devolve mg/dL; `_z()` é a saída padronizada
+    usada internamente para o treino."""
+
     def __init__(self, n_features: int, hidden_sizes: tuple[int, ...] = (64, 32), dropout: float = 0.2):
         super().__init__()
         layers = []
@@ -41,9 +46,14 @@ class MLPRegressor(nn.Module):
         self.n_features = n_features
         self.hidden_sizes = tuple(hidden_sizes)
         self.dropout = dropout
+        self.register_buffer("y_mean", torch.tensor(0.0))
+        self.register_buffer("y_std", torch.tensor(1.0))
+
+    def _z(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x).squeeze(-1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x).squeeze(-1)
+        return self._z(x) * self.y_std + self.y_mean
 
 
 @dataclass
@@ -62,12 +72,19 @@ def _to_tensor(x) -> torch.Tensor:
 def train_model(X_train, y_train, X_valid, y_valid, hidden_sizes: tuple[int, ...] = (64, 32),
                  dropout: float = 0.2, lr: float = 1e-3, weight_decay: float = 1e-4,
                  max_epochs: int = 500, patience: int = 30, seed: int = 42, verbose: bool = True) -> TrainResult:
-    """Treina a MLP com early stopping na perda (MSE) de validação; devolve o modelo da melhor época."""
+    """Treina a MLP com early stopping na perda (MSE, em unidades padronizadas) de validação; devolve o
+    modelo da melhor época. `y_mean`/`y_std` do treino ficam fixados no modelo (ver MLPRegressor)."""
     torch.manual_seed(seed)
     Xtr, ytr = _to_tensor(X_train), _to_tensor(y_train)
     Xva, yva = _to_tensor(X_valid), _to_tensor(y_valid)
 
     model = MLPRegressor(Xtr.shape[1], hidden_sizes, dropout)
+    y_std = ytr.std().item()
+    model.y_mean.fill_(ytr.mean().item())
+    model.y_std.fill_(y_std if y_std > 1e-9 else 1.0)
+    ytr_z = (ytr - model.y_mean) / model.y_std
+    yva_z = (yva - model.y_mean) / model.y_std
+
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     loss_fn = nn.MSELoss()
 
@@ -77,13 +94,13 @@ def train_model(X_train, y_train, X_valid, y_valid, hidden_sizes: tuple[int, ...
     for epoch in range(1, max_epochs + 1):
         model.train()
         opt.zero_grad()
-        loss = loss_fn(model(Xtr), ytr)
+        loss = loss_fn(model._z(Xtr), ytr_z)
         loss.backward()
         opt.step()
 
         model.eval()
         with torch.no_grad():
-            valid_loss = loss_fn(model(Xva), yva).item()
+            valid_loss = loss_fn(model._z(Xva), yva_z).item()
         history["train_loss"].append(loss.item())
         history["valid_loss"].append(valid_loss)
 

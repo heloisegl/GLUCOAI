@@ -1,7 +1,6 @@
 {
   "n_features": 95,
   "hidden_sizes": [
-    64,
     32
   ],
   "dropout": 0.3
