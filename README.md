@@ -1,6 +1,17 @@
-# Projeto CGMacros — Módulo 1: Pré-processamento (Integrante 1)
+# Projeto CGMacros
 
-Lê o dataset CGMacros v1.0.0 e entrega as tabelas que a rede neural (Integrante 2) e o algoritmo genético (Integrante 3) usam.
+Lê o dataset CGMacros v1.0.0, entrega as tabelas prontas para treino e estima a glicose com uma rede neural. O projeto tem três partes:
+
+| Parte | O que faz | Status |
+|---|---|---|
+| **Parte 1 — Pré-processamento** (`preprocessing.py`) | Lê os arquivos brutos, limpa, gera `data/processed/` (tabelas `wide`/`day_level`, splits, preprocessor) | ✅ Feito |
+| **Parte 2 — Rede neural** (`model.py`) | MLP em PyTorch que estima a glicose média a partir das features do pré-processamento | ✅ Treinada (MAE ≈ 9,6 mg/dL em validação) |
+| **Parte 3 — Algoritmo genético** | Busca planos (refeições/atividade) que a rede neural avalia, usando `model.predict` + `preprocessor.transform` | ⬜ Não iniciado |
+
+### O que falta
+- Implementar o algoritmo genético: definir genes (ver "Parte 3" abaixo), função de fitness (ex.: aproximar a glicose de uma meta ou minimizar tempo fora da faixa) e operadores de seleção/cruzamento/mutação.
+- Alinhar com quem for fazer a Parte 3 se o alvo é "baixar a glicose", "ficar dentro de uma faixa" ou outra meta — isso define a função de fitness.
+- Opcional: comparar a MLP treinada em `wide` vs `day_level` antes de fechar qual tabela o AG deve usar (hoje só `day_level` foi treinada).
 
 ## Como rodar
 ```bash
@@ -28,7 +39,7 @@ Ao terminar, o terminal mostra (entre outras coisas) a tabela **sensores × pont
 | `tools/make_synthetic_data.py` | Gera dados SINTÉTICOS no formato do CGMacros (inclui as variações reais de colunas; só para teste) |
 | `tests/test_preprocessing.py` | Testes de sanidade (sem vazamento, alvo correto, limpeza, sensores, METs) |
 | `tools/check_outputs.py` | Verificador automático da base gerada em `data/processed` (rode depois do pipeline) |
-| `model.py` | MLP em PyTorch (treino, avaliação, salvar/carregar, previsão) — Integrante 2 |
+| `model.py` | MLP em PyTorch (treino, avaliação, salvar/carregar, previsão) — Parte 2 |
 | `notebooks/03_rede_neural.ipynb` | Treina a rede em `day_level`, avalia e salva em `models/` |
 | `tests/test_model.py` | Testes de sanidade da rede (treino aprende, avaliação correta, save/load) |
 | `data/DataDictionary_*.csv` | Dicionários de dados oficiais |
@@ -49,7 +60,7 @@ Ao terminar, o terminal mostra (entre outras coisas) a tabela **sensores × pont
 | `fingerstick_validation.csv`, `fingerstick_summary.csv` | Cada sensor × glicemia de ponta de dedo do `bio.csv` (viés, MAE, RMSE) |
 | `config.json` | Parâmetros usados na execução |
 
-## Para o Integrante 2 (rede neural)
+## Parte 2 — Rede neural
 ```python
 import pandas as pd, preprocessing as P
 X_train = pd.read_csv("data/processed/model_ready/wide/X_train.csv")
@@ -60,9 +71,9 @@ X_new = prep.transform(df_novo)   # escala dados novos com o MESMO scaler do tre
 - `wide` tem ~40 linhas (1 por participante): pouco para uma MLP. `day_level` tem ~8× mais linhas; sugestão: treinar nele e usar a mesma função para estimar D9. Alinhem qual usar.
 - Não faça novo `train_test_split` por linha: use `splits.json` (por participante).
 - `prep.transform(df, clip=5)` limita os valores escalados a ±5 desvios. Vale usar se algum participante de validação/teste for atípico (no dataset real, o ID 30 tem café da manhã ~60 % do padrão e gera z ≈ −16 em `hist_breakfast_calories/carbs`) e, no AG, para impedir que a busca explore valores muito fora do que a rede viu no treino.
-- **Implementação (`model.py` + `notebooks/03_rede_neural.ipynb`):** MLP em PyTorch com early stopping na validação. O alvo é padronizado internamente (`MLPRegressor.y_mean/y_std`, fixados no treino) — sem isso o MSE inicial é dominado pela escala bruta da glicose (~120 mg/dL) e a rede não sai do chute "prever a média". `M.train_model(...)` devolve o modelo + histórico de perda; `M.evaluate(...)` dá MAE/RMSE/R²; `M.save_model`/`M.load_model` persistem pesos (`.pt`) e arquitetura (`.json`) em `models/`; `M.predict(model, df_novo, prep)` é a interface que o Integrante 3 usa para avaliar planos do AG. Treinado em `day_level` com `hidden_sizes=(32,)`, `dropout=0.3`, `weight_decay=1e-2` (escolhidos por busca em grade no MAE de validação — rede pequena + regularização forte generaliza melhor com ~212 linhas de treino). Resultado: MAE ≈ 9,6 mg/dL / R² ≈ 0,72 em validação, MAE ≈ 11,9 mg/dL / R² ≈ 0,80 em teste.
+- **Implementação (`model.py` + `notebooks/03_rede_neural.ipynb`):** MLP em PyTorch com early stopping na validação. O alvo é padronizado internamente (`MLPRegressor.y_mean/y_std`, fixados no treino) — sem isso o MSE inicial é dominado pela escala bruta da glicose (~120 mg/dL) e a rede não sai do chute "prever a média". `M.train_model(...)` devolve o modelo + histórico de perda; `M.evaluate(...)` dá MAE/RMSE/R²; `M.save_model`/`M.load_model` persistem pesos (`.pt`) e arquitetura (`.json`) em `models/`; `M.predict(model, df_novo, prep)` é a interface que a Parte 3 usa para avaliar planos do AG. Treinado em `day_level` com `hidden_sizes=(32,)`, `dropout=0.3`, `weight_decay=1e-2` (escolhidos por busca em grade no MAE de validação — rede pequena + regularização forte generaliza melhor com ~212 linhas de treino). Resultado: MAE ≈ 9,6 mg/dL / R² ≈ 0,72 em validação, MAE ≈ 11,9 mg/dL / R² ≈ 0,80 em teste.
 
-## Para o Integrante 3 (algoritmo genético)
+## Parte 3 — Algoritmo genético
 Os genes naturais são as colunas de `P.BEHAVIOR_FEATURES` de cada dia (`d7_*`, `d8_*`, `d9_*` no `wide`): macros por refeição, horário das refeições, minutos ativos etc.
 Limites realistas para cada gene: use `daily_features.csv` (mín/máx/percentis). Passe os planos por `prep.transform(...)` antes de chamar a rede.
 **Atenção:** só as colunas de `model_ready/<tabela>/feature_columns.json` chegam à rede. No `wide`, café da manhã e parte do almoço de D7–D9 foram descartados por serem constantes no treino (ver "Refeições do protocolo" abaixo), então o AG só consegue "recomendar" o que o modelo enxerga: jantar, lanches, horários e atividade.
