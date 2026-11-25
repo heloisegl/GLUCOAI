@@ -5,13 +5,21 @@ Lê o dataset CGMacros v1.0.0, entrega as tabelas prontas para treino e estima a
 | Parte | O que faz | Status |
 |---|---|---|
 | **Parte 1 — Pré-processamento** (`preprocessing.py`) | Lê os arquivos brutos, limpa, gera `data/processed/` (tabelas `wide`/`day_level`, splits, preprocessor) | ✅ Feito |
-| **Parte 2 — Rede neural** (`model.py`) | MLP em PyTorch que estima a glicose média a partir das features do pré-processamento | ✅ Treinada (MAE ≈ 9,6 mg/dL em validação) |
-| **Parte 3 — Algoritmo genético** | Busca planos (refeições/atividade) que a rede neural avalia, usando `model.predict` + `preprocessor.transform` | ⬜ Não iniciado |
+| **Parte 2 — Rede neural** (`model.py`) | MLP em PyTorch que estima a glicose média a partir das features do pré-processamento | ⚠️ Treinada em `day_level` (MAE ≈ 9,6 mg/dL em validação) — ver pendência de alinhamento abaixo |
+| **Parte 3 — Algoritmo genético** | Busca planos (refeições/atividade) que a rede neural avalia, usando `model.predict` + `preprocessor.transform` | ⬜ Não iniciado — ver "Ideias para discutir em equipe" |
+
+### Enunciado do projeto (literal)
+> Implementar um sistema de recomendação em saúde que leia as informações de seis dias (D1..6) e indique um comportamento para os próximos 3 dias (D7..9) de modo a reduzir a glicose no último dia (D9).
+
+### ⚠️ Pendência de alinhamento: qual tabela treina a rede
+O enunciado pede especificamente **D1–D6 → comportamento D7–D9 → reduzir a glicose em D9**. Isso é a formulação `wide` (`target_d9_gl_mean`), que tem 1 linha por participante (~40 linhas).
+A Parte 2 hoje treinou em `day_level` (~212 linhas de treino, ~8× mais dados), cujo alvo é "glicose média de um dia genérico dado o dia anterior" — mais fácil de treinar, mas **não é literalmente o D9**. Pra usar esse modelo do jeito que o enunciado pede, a Parte 3 precisaria aplicá-lo de forma iterativa (prever D7, usar como "dia anterior" pra prever D8, e assim por diante até D9) e isso precisa estar explícito e justificado na apresentação — senão parece que o grupo resolveu um problema diferente do pedido.
+**Decisão da equipe pendente:** usar `day_level` + aplicação iterativa (como está) ou treinar também em `wide` e comparar as duas abordagens antes de fechar.
 
 ### O que falta
-- Implementar o algoritmo genético: definir genes (ver "Parte 3" abaixo), função de fitness (ex.: aproximar a glicose de uma meta ou minimizar tempo fora da faixa) e operadores de seleção/cruzamento/mutação.
-- Alinhar com quem for fazer a Parte 3 se o alvo é "baixar a glicose", "ficar dentro de uma faixa" ou outra meta — isso define a função de fitness.
-- Opcional: comparar a MLP treinada em `wide` vs `day_level` antes de fechar qual tabela o AG deve usar (hoje só `day_level` foi treinada).
+- Resolver a pendência de alinhamento acima com a equipe.
+- Implementar o algoritmo genético: definir genes (ver "Parte 3" abaixo), função de fitness e operadores de seleção/cruzamento/mutação.
+- Ver "Ideias para discutir em equipe" abaixo antes de começar a Parte 3 — nenhuma foi implementada ainda.
 
 ## Como rodar
 ```bash
@@ -77,6 +85,16 @@ X_new = prep.transform(df_novo)   # escala dados novos com o MESMO scaler do tre
 Os genes naturais são as colunas de `P.BEHAVIOR_FEATURES` de cada dia (`d7_*`, `d8_*`, `d9_*` no `wide`): macros por refeição, horário das refeições, minutos ativos etc.
 Limites realistas para cada gene: use `daily_features.csv` (mín/máx/percentis). Passe os planos por `prep.transform(...)` antes de chamar a rede.
 **Atenção:** só as colunas de `model_ready/<tabela>/feature_columns.json` chegam à rede. No `wide`, café da manhã e parte do almoço de D7–D9 foram descartados por serem constantes no treino (ver "Refeições do protocolo" abaixo), então o AG só consegue "recomendar" o que o modelo enxerga: jantar, lanches, horários e atividade.
+
+## Ideias para discutir em equipe (nada disso foi implementado ainda)
+O enunciado pede explicitamente um sistema de **recomendação**, não só um preditor + otimizador genérico. O risco de fazer só "MLP prevê, AG minimiza" é entregar o template padrão de livro-texto (que é, literalmente, o que os slides de aula ensinam passo a passo) — correto, mas sem nenhuma ideia própria do grupo. Pontos pra decidir juntos antes de implementar a Parte 3:
+- **Fitness multiobjetivo, não só "minimizar glicose prevista".** Igual ao exemplo da mochila nos slides (valor só conta se peso ≤ 15 kg): aqui, a glicose só deveria contar se o plano for **realista** (penalizar recomendações muito distantes do que o participante já faz, usando percentis de `daily_features.csv` como limite). Evita o AG "recomendar" não comer nada.
+- **Diferenciar por grupo (`group_a1c`).** Saudável, pré-diabetes e DM2 provavelmente não deveriam ter o mesmo objetivo — "reduzir" pode não fazer sentido pra quem já está na faixa saudável (talvez "manter estável"/maximizar tempo na faixa seja mais apropriado pra esse grupo).
+- **Métrica clínica além da média.** Já temos TIR/TAR/TBR calculados no pré-processamento; usar tempo-na-faixa (não só glicose média) no fitness é mais rico clinicamente do que só o valor médio de D9.
+- **Comparar com baseline ingênua.** Rodar o AG contra uma regra fixa simples (ex.: "coma menos carboidrato no jantar") e mostrar que a busca genética realmente acha algo melhor — sem isso fica difícil provar que a otimização valeu a pena.
+- **Curva de fitness × gerações.** Mostrar a evolução da busca (como no slide de exemplo do AG) em vez de só o resultado final.
+- **Interpretabilidade da recomendação.** Traduzir o cromossomo vencedor de volta para algo legível ("jantar com X kcal às 19h, 30 min de caminhada") em vez de só um vetor de features — conecta com "sistema de recomendação em saúde" do enunciado.
+- **Resolver antes:** a pendência de alinhamento `wide` vs `day_level` descrita no topo do README — a função de fitness e os genes dependem dessa decisão.
 
 ## Decisões de projeto (alteráveis por parâmetro)
 - **Glicose (`--glucose consensus`, padrão).** Libre e Dexcom discordam: no dataset real o Dexcom lê, em média, **31,95 mg/dL acima** do Libre (correlação minuto a minuto 0,83). Comparando com as pontas de dedo do `bio.csv` (32 medições em que os dois sensores já estavam ativos), o Libre leu **15,9 mg/dL abaixo** e o Dexcom **16,8 acima**; a média dos dois ficou a +0,5 mg/dL (erro absoluto médio: Libre 21,6, Dexcom 20,0, média 9,6). Segunda checagem, que não depende do horário: a glicose média de cada participante contra a esperada pela A1c (`eAG = 28,7·A1c − 46,7`) deu viés de −20,5 (Libre), +11,5 (Dexcom) e −4,3 mg/dL (`consensus`), com correlação 0,81, 0,81 e 0,85. Por isso o `consensus` calcula, por participante, o deslocamento mediano `Dexcom − Libre` e usa `(Libre + Dexcom)/2`; nos minutos em que só um sensor existe, ele é deslocado para o mesmo ponto médio (sem "degraus" quando um sensor some). Alternativas: `libre_filled` (Libre + Dexcom corrigido onde falta), `mean` (média simples), `libre`, `dexcom`. Valores fora de 40–400 viram NaN; só buracos ≤ 30 min são interpolados; depois do alinhamento a glicose é limitada a 40–400 mg/dL. **Atenção:** TIR/TAR/TBR (cortes 70/180) dependem muito da fonte escolhida.
