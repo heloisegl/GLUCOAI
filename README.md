@@ -28,6 +28,9 @@ Ao terminar, o terminal mostra (entre outras coisas) a tabela **sensores × pont
 | `tools/make_synthetic_data.py` | Gera dados SINTÉTICOS no formato do CGMacros (inclui as variações reais de colunas; só para teste) |
 | `tests/test_preprocessing.py` | Testes de sanidade (sem vazamento, alvo correto, limpeza, sensores, METs) |
 | `tools/check_outputs.py` | Verificador automático da base gerada em `data/processed` (rode depois do pipeline) |
+| `model.py` | MLP em PyTorch (treino, avaliação, salvar/carregar, previsão) — Integrante 2 |
+| `notebooks/03_rede_neural.ipynb` | Treina a rede em `day_level`, avalia e salva em `models/` |
+| `tests/test_model.py` | Testes de sanidade da rede (treino aprende, avaliação correta, save/load) |
 | `data/DataDictionary_*.csv` | Dicionários de dados oficiais |
 
 ## Arquivos gerados em `data/processed/`
@@ -57,6 +60,7 @@ X_new = prep.transform(df_novo)   # escala dados novos com o MESMO scaler do tre
 - `wide` tem ~40 linhas (1 por participante): pouco para uma MLP. `day_level` tem ~8× mais linhas; sugestão: treinar nele e usar a mesma função para estimar D9. Alinhem qual usar.
 - Não faça novo `train_test_split` por linha: use `splits.json` (por participante).
 - `prep.transform(df, clip=5)` limita os valores escalados a ±5 desvios. Vale usar se algum participante de validação/teste for atípico (no dataset real, o ID 30 tem café da manhã ~60 % do padrão e gera z ≈ −16 em `hist_breakfast_calories/carbs`) e, no AG, para impedir que a busca explore valores muito fora do que a rede viu no treino.
+- **Implementação (`model.py` + `notebooks/03_rede_neural.ipynb`):** MLP em PyTorch com early stopping na validação. `M.train_model(...)` devolve o modelo + histórico de perda; `M.evaluate(...)` dá MAE/RMSE/R²; `M.save_model`/`M.load_model` persistem pesos (`.pt`) e arquitetura (`.json`) em `models/`; `M.predict(model, df_novo, prep)` é a interface que o Integrante 3 usa para avaliar planos do AG. Treinado em `day_level` (`hidden_sizes=(64, 32)`, `dropout=0.3`) — ajuste os hiperparâmetros no notebook se houver sobreajuste.
 
 ## Para o Integrante 3 (algoritmo genético)
 Os genes naturais são as colunas de `P.BEHAVIOR_FEATURES` de cada dia (`d7_*`, `d8_*`, `d9_*` no `wide`): macros por refeição, horário das refeições, minutos ativos etc.
