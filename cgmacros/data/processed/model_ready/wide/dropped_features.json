@@ -1,0 +1,27 @@
+{
+  "constant_in_train": [
+    "hist_breakfast_protein",
+    "hist_breakfast_fiber",
+    "d7_breakfast_calories",
+    "d7_breakfast_carbs",
+    "d7_breakfast_protein",
+    "d7_breakfast_fat",
+    "d7_breakfast_fiber",
+    "d7_lunch_calories",
+    "d7_lunch_carbs",
+    "d7_lunch_protein",
+    "d7_lunch_fat",
+    "d8_breakfast_protein",
+    "d8_breakfast_fiber",
+    "d9_breakfast_calories",
+    "d9_breakfast_carbs",
+    "d9_breakfast_protein",
+    "d9_breakfast_fat",
+    "d9_breakfast_fiber",
+    "d9_lunch_carbs",
+    "d9_lunch_protein",
+    "d9_lunch_fat",
+    "eth_other"
+  ],
+  "all_missing_in_train": []
+}
